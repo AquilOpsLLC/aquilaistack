@@ -1,0 +1,98 @@
+# ============================================================================
+# AI AUTOMATION STACK - ENVIRONMENT VARIABLES
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# POSTGRESQL
+# ----------------------------------------------------------------------------
+
+
+POSTGRES_USER=root
+POSTGRES_PASSWORD=Changeme123!
+POSTGRES_DB=n8n
+POSTGRES_NON_ROOT_USER=n8n
+POSTGRES_NON_ROOT_PASSWORD=Changeme123!
+
+# ----------------------------------------------------------------------------
+# TIMEZONE & LOCALE
+# ----------------------------------------------------------------------------
+TZ=Europe/Istanbul
+LANG=tr_TR.UTF-8
+
+# ----------------------------------------------------------------------------
+# MINIO - S3 Storage
+# ----------------------------------------------------------------------------
+
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=Changeme123!
+MINIO_REGION=eu-central-1
+
+# ----------------------------------------------------------------------------
+# N8N CONFIGURATION
+# ----------------------------------------------------------------------------
+
+GENERIC_TIMEZONE=Europe/Istanbul
+
+# n8n host (reverse proxy kullanıyorsanız)
+# N8N_HOST=automation.yourdomain.com
+# N8N_PROTOCOL=https
+
+# N8N_BASIC_AUTH_ACTIVE=true
+# N8N_BASIC_AUTH_USER=admin
+# N8N_BASIC_AUTH_PASSWORD=admin123
+
+# n8n Queue Mode (Redis ile ağır iş yükleri için)
+# QUEUE_BULL_REDIS_HOST=redis
+# QUEUE_BULL_REDIS_PORT=6379
+# EXECUTIONS_MODE=queue
+
+# ----------------------------------------------------------------------------
+# OLLAMA CONFIGURATION
+# ----------------------------------------------------------------------------
+
+# OLLAMA_MODELS=/models
+# Ollama host (n8n'den erişim için)
+OLLAMA_HOST=http://ollama:11434
+# OLLAMA_GPU_MEMORY=8
+
+# ----------------------------------------------------------------------------
+# WHISPER - Speech to Text
+# ----------------------------------------------------------------------------
+# Model seçenekleri: tiny, base, small, medium, large
+# tiny: En hızlı, düşük kalite
+# base: Hızlı, orta kalite (ÖNERILEN)
+# small: Daha yavaş, iyi kalite
+# medium: Yavaş, çok iyi kalite
+# large: En yavaş, en iyi kalite
+
+WHISPER_MODEL=base
+
+# ----------------------------------------------------------------------------
+# QDRANT - Vector Database
+# ----------------------------------------------------------------------------
+
+# QDRANT_API_KEY=your-secret-api-key
+QDRANT__TELEMETRY_DISABLED=true
+
+# ----------------------------------------------------------------------------
+# GRAFANA - Dashboard (opsiyonel)
+# ----------------------------------------------------------------------------
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=Changeme123!
+
+# ---------------------------------------------------------------------------
+# PROMETHEUS - Metrics (opsiyonel)
+# ----------------------------------------------------------------------------
+# PROMETHEUS_RETENTION_TIME=30d
+
+# ----------------------------------------------------------------------------
+# BACKUP CONFIGURATION (Script için)
+# ----------------------------------------------------------------------------
+BACKUP_DIR=./backups
+BACKUP_RETENTION_DAYS=30
+
+# ----------------------------------------------------------------------------
+# DEVELOPMENT MODE
+# ----------------------------------------------------------------------------
+
+#DEV_MODE=true

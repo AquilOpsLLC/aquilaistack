@@ -1,0 +1,493 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: n8n-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: n8n
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: n8n_password
+      # Additional databases for other services
+      POSTGRES_MULTIPLE_DATABASES: gitea,sonarqube
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U n8n']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  redis:
+    image: redis:7-alpine
+    container_name: ai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=n8n_password
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin123
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Europe/Istanbul
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - EXECUTIONS_MODE=queue
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+      - ./comfyui_output:/comfyui_output:ro
+      - ./n8n_custom:/home/node/.n8n/custom
+      - ./ai_projects:/ai_projects
+    networks:
+      - ai_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      comfyui:
+        condition: service_started
+
+  # ==========================================================================
+  # AI SERVICES - CORE AI FUNCTIONALITY
+  # ==========================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_data:/root/.ollama
+    networks:
+      - ai_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  comfyui:
+    image: yanwk/comfyui-boot:cu128-megapak-pt29-20251231
+    container_name: comfyui
+    restart: unless-stopped
+    ports:
+      - "8188:8188"
+    environment:
+      - CLI_ARGS=--listen 0.0.0.0
+    volumes:
+      - ./comfyui_data:/root/ComfyUI
+      - ./comfyui_output:/root/ComfyUI/output
+      - ./comfyui_models/animatediff_models:/root/ComfyUI/models/animatediff_models
+      - ./comfyui_models/animatediff_motion_lora:/root/ComfyUI/models/animatediff_motion_lora
+      - ./comfyui_models/audio_encoders:/root/ComfyUI/models/audio_encoders
+      - ./comfyui_models/checkpoints:/root/ComfyUI/models/checkpoints
+      - ./comfyui_models/clip:/root/ComfyUI/models/clip
+      - ./comfyui_models/clip_vision:/root/ComfyUI/models/clip_vision
+      - ./comfyui_models/configs:/root/ComfyUI/models/configs
+      - ./comfyui_models/controlnet:/root/ComfyUI/models/controlnet
+      - ./comfyui_models/diffusers:/root/ComfyUI/models/diffusers
+      - ./comfyui_models/diffusion_models:/root/ComfyUI/models/diffusion_models
+      - ./comfyui_models/embeddings:/root/ComfyUI/models/embeddings
+      - ./comfyui_models/gligen:/root/ComfyUI/models/gligen
+      - ./comfyui_models/hypernetworks:/root/ComfyUI/models/hypernetworks
+      - ./comfyui_models/ipadapter:/root/ComfyUI/models/ipadapter
+      - ./comfyui_models/latent_upscale_models:/root/ComfyUI/models/latent_upscale_models
+      - ./comfyui_models/LLM:/root/ComfyUI/models/LLM
+      - ./comfyui_models/loras:/root/ComfyUI/models/loras
+      - ./comfyui_models/model_patches:/root/ComfyUI/models/model_patches
+      - ./comfyui_models/photomaker:/root/ComfyUI/models/photomaker
+      - ./comfyui_models/pulid:/root/ComfyUI/models/pulid
+      - ./comfyui_models/style_models:/root/ComfyUI/models/style_models
+      - ./comfyui_models/text_encoders:/root/ComfyUI/models/text_encoders
+      - ./comfyui_models/unet:/root/ComfyUI/models/unet
+      - ./comfyui_models/upscale_models:/root/ComfyUI/models/upscale_models
+      - ./comfyui_models/vae:/root/ComfyUI/models/vae
+      - ./comfyui_models/vae_approx:/root/ComfyUI/models/vae_approx
+    networks:
+      - ai_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  whisper:
+    image: rhasspy/wyoming-whisper:latest
+    container_name: whisper
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - whisper_models:/root/.cache/whisper
+    environment:
+      - ASR_MODEL=base
+      - ASR_ENGINE=openai_whisper
+    networks:
+      - ai_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  piper:
+    image: rhasspy/wyoming-piper:latest
+    container_name: piper
+    restart: unless-stopped
+    ports:
+      - "5500:5500"
+    command: --model en_US-lessac-medium --port 5500
+    networks:
+      - ai_network
+
+  # ==========================================================================
+  # VECTOR DATABASE
+  # ==========================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  
+      - "6334:6334"  
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__TELEMETRY_DISABLED=true
+    networks:
+      - ai_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ==========================================================================
+  # STORAGE - File & Object Storage
+  # ==========================================================================
+  # Credentials: minioadmin / minioadmin123
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    ports:
+      - "9001:9001"  
+      - "9002:9000"
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    command: server /data --console-address ":9001"
+    networks:
+      - ai_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ==========================================================================
+  # MONITORING & MANAGEMENT - Production için önemli
+  # ==========================================================================
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "9443:9443"
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - ai_network
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOZZLE_LEVEL=info
+      - DOZZLE_TAILSIZE=300
+    networks:
+      - ai_network
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - ai_network
+
+  # ==========================================================================
+  # ADVANCED MONITORING 
+  # ==========================================================================
+  #prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: prometheus
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus_data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   networks:
+  #     - ai_network
+
+  # Grafana - Metrics Visualization
+  grafana:
+     image: grafana/grafana:latest
+     container_name: grafana
+     restart: unless-stopped
+     ports:
+       - "3000:3000"
+     volumes:
+       - grafana_data:/var/lib/grafana
+     environment:
+       - GF_SECURITY_ADMIN_USER=admin
+       - GF_SECURITY_ADMIN_PASSWORD=admin123
+     networks:
+       - ai_network
+    # depends_on:
+    #   - prometheus
+
+  # Loki - Log Aggregation
+  loki:
+     image: grafana/loki:latest
+     container_name: loki
+     restart: unless-stopped
+     ports:
+       - "3100:3100"
+     volumes:
+       - loki_data:/loki
+     networks:
+       - ai_network
+
+  # ==========================================================================
+  # UTILITY SERVICES - Test & Development
+  # ==========================================================================
+  
+  # Webhook Test - Webhook.site alternatifi
+  webhook-test:
+     image: tarampampam/webhook-tester:latest
+     container_name: webhook-test
+     restart: unless-stopped
+     ports:
+       - "8084:8080"
+     networks:
+       - ai_network
+
+  # MailCatcher - Email Testing
+  mailcatcher:
+     image: sj26/mailcatcher:latest
+     container_name: mailcatcher
+     restart: unless-stopped
+     ports:
+       - "1080:1080"  # Web UI
+       - "1025:1025"  # SMTP
+     networks:
+       - ai_network
+
+  # ==========================================================================
+  # AI DEVELOPER AGENT PIPELINE - OPSIYONEL
+  # Kod üretme, test etme, Git push için gerekli servisler
+  # İhtiyaç duyduğunuzda yorumdan çıkarın
+  # ==========================================================================
+  
+  # Python Sandbox - AI'ın ürettiği Python kodlarını çalıştırır
+  python-sandbox:
+     image: python:3.11-slim
+     container_name: python-sandbox
+     restart: unless-stopped
+     working_dir: /workspace
+     volumes:
+       - ./ai_projects:/workspace
+     command: |
+       bash -c "
+         pip install --no-cache-dir \
+           fastapi uvicorn sqlalchemy pydantic \
+           pytest pytest-cov black flake8 mypy \
+           requests pandas numpy flask django \
+           celery redis psycopg2-binary && \
+         tail -f /dev/null
+       "
+     networks:
+       - ai_network
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2'
+  #         memory: 2G
+
+  # Node.js Sandbox - React, Express gibi JS projelerini çalıştırır
+  node-sandbox:
+     image: node:20-slim
+     container_name: node-sandbox
+     restart: unless-stopped
+     working_dir: /workspace
+     volumes:
+       - ./ai_projects:/workspace
+     command: |
+       bash -c "
+         npm install -g \
+           create-react-app \
+           express-generator \
+           eslint prettier \
+           jest && \
+         tail -f /dev/null
+       "
+     networks:
+       - ai_network
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2'
+  #         memory: 2G
+
+  # Gitea - Self-hosted Git Server
+  # AI'ın ürettiği projeler buraya push edilir
+  # Web UI: http://localhost:3002
+  gitea:
+     image: gitea/gitea:latest
+     container_name: gitea
+     restart: unless-stopped
+     ports:
+       - "3002:3000"
+       - "2222:22"
+     environment:
+       - USER_UID=1000
+       - USER_GID=1000
+       - GITEA__database__DB_TYPE=postgres
+       - GITEA__database__HOST=postgres:5432
+       - GITEA__database__NAME=gitea
+       - GITEA__database__USER=n8n
+       - GITEA__database__PASSWD=n8n_password
+     volumes:
+       - gitea_data:/data
+       - /etc/timezone:/etc/timezone:ro
+       - /etc/localtime:/etc/localtime:ro
+     networks:
+       - ai_network
+     depends_on:
+       - postgres
+
+  # Code-Server - Browser-based VS Code
+  # AI'ın ürettiği kodları burada inceleyip düzenleyebilirsin
+  # Web UI: http://localhost:8443
+  # Password: changeme123
+  code-server:
+     image: codercom/code-server:latest
+     container_name: code-server
+     restart: unless-stopped
+     ports:
+       - "8443:8080"
+     environment:
+       - PASSWORD=changeme123
+     volumes:
+       - ./ai_projects:/home/coder/projects
+       - code_server_data:/home/coder/.local/share/code-server
+     networks:
+       - ai_network
+     user: "1000:1000"
+
+  # SonarQube - Code Quality Scanner
+  # AI'ın kodunu analiz eder, bug/vulnerability bulur
+  # Web UI: http://localhost:9000
+  # Default: admin/admin (4GB RAM gerektirir!)
+  sonarqube:
+     image: sonarqube:community
+     container_name: sonarqube
+     restart: unless-stopped
+     ports:
+       - "9003:9000"
+     environment:
+       - SONAR_JDBC_URL=jdbc:postgresql://postgres:5432/sonarqube
+       - SONAR_JDBC_USERNAME=n8n
+       - SONAR_JDBC_PASSWORD=n8n_password
+     volumes:
+       - sonarqube_data:/opt/sonarqube/data
+       - sonarqube_extensions:/opt/sonarqube/extensions
+       - sonarqube_logs:/opt/sonarqube/logs
+     networks:
+       - ai_network
+     depends_on:
+       - postgres
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 4G
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  postgres_data:
+  n8n_data:
+  ollama_data:
+  comfyui_data:
+  comfyui_output:
+  redis_data:
+  qdrant_storage:
+  minio_data:
+  whisper_models:
+  portainer_data:
+  uptime_kuma_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  gitea_data:
+  code_server_data:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  ai_network:
+    driver: bridge
